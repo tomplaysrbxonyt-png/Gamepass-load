@@ -1,67 +1,58 @@
 import express from "express";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// Cache mémoire simple
+// Petit cache mémoire
 const cache = new Map();
 const CACHE_TIME = 5 * 60 * 1000; // 5 min
 
-async function getUserGames(userId) {
-    let allGames = [];
+async function robloxFetch(url) {
+    const res = await fetch(url, {
+        headers: {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json"
+        }
+    });
 
-    // Jeux créés par l'utilisateur
-    const userRes = await fetch(`https://games.roblox.com/v2/users/${userId}/games?accessFilter=All&limit=50&sortOrder=Asc`);
-    const userData = await userRes.json();
-    if (userData.data) {
-        allGames.push(...userData.data);
+    if (!res.ok) {
+        throw new Error(`Roblox API error ${res.status}`);
     }
 
-    // Récupérer les groupes du user
-    const groupsRes = await fetch(`https://groups.roblox.com/v2/users/${userId}/groups/roles`);
-    const groupsData = await groupsRes.json();
+    return await res.json();
+}
 
-    if (groupsData.data) {
-        for (const group of groupsData.data) {
-            const groupId = group.group.id;
+async function getGamepasses(userId) {
+    // Subcategory 34 = Gamepasses
+    const data = await robloxFetch(
+        `https://catalog.roblox.com/v1/search/items/details?Category=3&Subcategory=34&Limit=50&CreatorTargetId=${userId}&CreatorType=User`
+    );
 
-            const groupGamesRes = await fetch(`https://games.roblox.com/v2/groups/${groupId}/games?accessFilter=All&limit=50&sortOrder=Asc`);
-            const groupGamesData = await groupGamesRes.json();
+    return data.data ? data.data.map(i => i.id) : [];
+}
 
-            if (groupGamesData.data) {
-                allGames.push(...groupGamesData.data);
-            }
+async function getClothing(username) {
+    let clothing = [];
+
+    for (const sub of ["55", "56", "57"]) {
+        const data = await robloxFetch(
+            `https://catalog.roblox.com/v1/search/items/details?Category=3&Subcategory=${sub}&Limit=30&CreatorName=${username}`
+        );
+
+        if (data.data) {
+            clothing.push(...data.data.map(i => i.id));
         }
     }
 
-    return allGames;
-}
-async function getUniverseId(placeId) {
-    const res = await fetch(`https://games.roblox.com/v1/games/multiget-place-details?placeIds=${placeId}`);
-    const data = await res.json();
-    return data[0]?.universeId;
-}
-
-async function getGamepasses(universeId) {
-    const res = await fetch(`https://games.roblox.com/v1/universes/${universeId}/game-passes?limit=100&sortOrder=Asc`);
-    const data = await res.json();
-    return data.data || [];
-}
-
-async function getClothing(username, sub) {
-    const res = await fetch(
-        `https://catalog.roblox.com/v1/search/items/details?Category=3&Subcategory=${sub}&Limit=30&CreatorName=${username}`
-    );
-    const data = await res.json();
-    return data.data || [];
+    return clothing;
 }
 
 app.get("/assets/:userId/:username", async (req, res) => {
     const { userId, username } = req.params;
-    const cacheKey = `${userId}`;
+
+    const cacheKey = userId;
 
     if (cache.has(cacheKey)) {
         const cached = cache.get(cacheKey);
@@ -71,25 +62,10 @@ app.get("/assets/:userId/:username", async (req, res) => {
     }
 
     try {
-        const games = await getUserGames(userId);
-        let gamepasses = [];
-
-        for (const game of games) {
-            const placeId = game.rootPlace?.id;
-            if (!placeId) continue;
-
-            const universeId = await getUniverseId(placeId);
-            if (!universeId) continue;
-
-            const passes = await getGamepasses(universeId);
-            gamepasses.push(...passes.map(p => p.id));
-        }
-
-        let clothing = [];
-        for (const sub of ["55", "56", "57"]) {
-            const items = await getClothing(username, sub);
-            clothing.push(...items.map(i => i.id));
-        }
+        const [gamepasses, clothing] = await Promise.all([
+            getGamepasses(userId),
+            getClothing(username)
+        ]);
 
         const result = { gamepasses, clothing };
 
@@ -101,13 +77,11 @@ app.get("/assets/:userId/:username", async (req, res) => {
         res.json(result);
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Internal error" });
+        console.error("ASSETS ERROR:", err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
 app.listen(PORT, () => {
     console.log("Server running on port", PORT);
-
 });
-
