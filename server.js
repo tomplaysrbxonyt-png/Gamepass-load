@@ -11,11 +11,34 @@ const cache = new Map();
 const CACHE_TIME = 5 * 60 * 1000; // 5 min
 
 async function getUserGames(userId) {
-    const res = await fetch(`https://games.roblox.com/v2/users/${userId}/games?accessFilter=Public&limit=50&sortOrder=Asc`);
-    const data = await res.json();
-    return data.data || [];
-}
+    let allGames = [];
 
+    // Jeux créés par l'utilisateur
+    const userRes = await fetch(`https://games.roblox.com/v2/users/${userId}/games?accessFilter=Public&limit=50&sortOrder=Asc`);
+    const userData = await userRes.json();
+    if (userData.data) {
+        allGames.push(...userData.data);
+    }
+
+    // Récupérer les groupes du user
+    const groupsRes = await fetch(`https://groups.roblox.com/v2/users/${userId}/groups/roles`);
+    const groupsData = await groupsRes.json();
+
+    if (groupsData.data) {
+        for (const group of groupsData.data) {
+            const groupId = group.group.id;
+
+            const groupGamesRes = await fetch(`https://games.roblox.com/v2/groups/${groupId}/games?accessFilter=Public&limit=50&sortOrder=Asc`);
+            const groupGamesData = await groupGamesRes.json();
+
+            if (groupGamesData.data) {
+                allGames.push(...groupGamesData.data);
+            }
+        }
+    }
+
+    return allGames;
+}
 async function getUniverseId(placeId) {
     const res = await fetch(`https://games.roblox.com/v1/games/multiget-place-details?placeIds=${placeId}`);
     const data = await res.json();
@@ -85,4 +108,5 @@ app.get("/assets/:userId/:username", async (req, res) => {
 
 app.listen(PORT, () => {
     console.log("Server running on port", PORT);
+
 });
