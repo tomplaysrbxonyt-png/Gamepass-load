@@ -14,7 +14,7 @@ async function getUserGames(userId) {
     let allGames = [];
 
     // Jeux créés par l'utilisateur
-    const userRes = await fetch(`https://games.roblox.com/v2/users/${userId}/games?accessFilter=Public&limit=50&sortOrder=Asc`);
+    const userRes = await fetch(`https://games.roblox.com/v2/users/${userId}/games?accessFilter=All&limit=50&sortOrder=Asc`);
     const userData = await userRes.json();
     if (userData.data) {
         allGames.push(...userData.data);
@@ -28,7 +28,7 @@ async function getUserGames(userId) {
         for (const group of groupsData.data) {
             const groupId = group.group.id;
 
-            const groupGamesRes = await fetch(`https://games.roblox.com/v2/groups/${groupId}/games?accessFilter=Public&limit=50&sortOrder=Asc`);
+            const groupGamesRes = await fetch(`https://games.roblox.com/v2/groups/${groupId}/games?accessFilter=All&limit=50&sortOrder=Asc`);
             const groupGamesData = await groupGamesRes.json();
 
             if (groupGamesData.data) {
@@ -110,3 +110,4 @@ app.listen(PORT, () => {
     console.log("Server running on port", PORT);
 
 });
+
